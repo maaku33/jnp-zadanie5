@@ -18,41 +18,64 @@ class lookup_error : public std::exception {
 template <class K, class V> class keyed_queue {
 public:
     //TODO gdzieś dopisać explicit albo noexcept? + pamiętać o wyjątkach
-    keyed_queue() : queue_size(0) {}
+    //TODO kopiowanie/tworzenie nowych first/last_wrappingów jest zrobione bez sensu
+    keyed_queue() : queue_size(0), first_wrapping(nullptr), last_wrapping(nullptr) {}
 
-    keyed_queue(keyed_queue const &other);
+    keyed_queue(keyed_queue const &other) :
+            mymap(std::move(other.mymap)),
+            queue_size(other.queue_size),
+            first_wrapping(other.first_wrapping),
+            last_wrapping(other.last_wrapping) {}
 
-    keyed_queue(keyed_queue &&other) :
+    keyed_queue(keyed_queue &&other) noexcept :
         mymap(std::move(other.mymap)),
         queue_size(std::move(other.queue_size)),
         first_wrapping(std::move(other.first_wrapping)),
         last_wrapping(std::move(other.last_wrapping)) {}
 
-    //TODO co jeśli pushujemy na pustą kolejkę?
+    keyed_queue &operator=(keyed_queue other) {
+        mymap = other.mymap;
+        queue_size = other.queue_size;
+        first_wrapping = other.first_wrapping;
+        last_wrapping = other.last_wrapping;
+
+        return *this;
+    }
+
     void push(K const &key, V const &value) {
         auto it = mymap.find(key);
-        wrapping new_wrapping(key, value, last_wrapping, it->second);
-        it->second.push_back(new_wrapping);
+
+        if (it == mymap.end()) {
+            auto new_deque_ptr = std::make_shared<std::deque<wrapping>>();
+            wrapping new_wrapping(key, value, last_wrapping, new_deque_ptr);
+            (*new_deque_ptr).push_back(new_wrapping);
+            std::deque<wrapping> new_deque = *new_deque_ptr;
+            mymap.insert(std::make_pair(key, new_deque));
+        } else {
+            auto deque_ptr = std::make_shared<std::deque<wrapping>>(it->second);
+            wrapping new_wrapping(key, value, last_wrapping, deque_ptr);
+            (it->second).push_back(new_wrapping);
+        }
+
         queue_size++;
     }
 
     void pop() {
         if (empty()) throw lookup_error();
 
-        //TODO czy ten kod poniżej się wykona w przypadku wyrzucenia wyjątku powyżej?
         auto temp_it = first_wrapping;
         first_wrapping = first_wrapping->next;
-        temp_it->destroy();
+        temp_it->destroy(); //TODO problem z zachowaniem poprawnej kolejności w kolejce odpowiadającego kluczowi elementu *temp_it
 
         queue_size--;
     }
 
     void pop(K const &key) {
         auto it = mymap.find(key);
-        if (key == mymap.end()) throw lookup_error();
+        if (it == mymap.end()) throw lookup_error();
 
-        wrapping first_key_wrapping = it->second.front();
-        it->second.pop_front();
+        wrapping first_key_wrapping = (it->second).front();
+        (it->second).pop_front();
         first_key_wrapping.destroy();
 
         queue_size--;
@@ -60,7 +83,17 @@ public:
 
     void move_to_back(K const &key) {
         auto it = mymap.find(key);
-        if (key == mymap.end()) throw lookup_error();
+        if (it == mymap.end()) throw lookup_error();
+
+        for (auto key_it = (it->second).begin(); key_it != (it->second).end(); ++it) {
+            // TODO uwaga - trochę powtórzenie kodu z funkcji destroy klasy wrapping
+            if (key_it->next != nullptr) key_it->previous->next = key_it->next;
+            if (key_it->previous != nullptr) key_it->next->previous = key_it->previous;
+
+            key_it->previous = last_wrapping;
+            key_it->next = nullptr;
+            last_wrapping->next = key_it; //TODO przypisanie iteratora na shared_ptr nie działa
+        }
     }
 
     std::pair<K const &, V &> front() {
@@ -89,24 +122,30 @@ public:
 
     std::pair<K const &, V &> first(K const &key) {
         auto it = mymap.find(key);
-        if (key == mymap.end()) throw lookup_error();
+        if (it == mymap.end()) throw lookup_error();
 
-        return std::make_pair(it->second.front().key, it->second.front().value); // coś tu nie tak ze zwracaniem klucza
+        return std::make_pair((it->second).front().key, (it->second).front().value);
     }
 
     std::pair<K const &, V &> last(K const &key) {
         auto it = mymap.find(key);
-        if (key == mymap.end()) throw lookup_error();
+        if (it == mymap.end()) throw lookup_error();
+
+        return std::make_pair((it->second).back().key, (it->second).back().value);
     }
 
     std::pair<K const &, V const &> first(K const &key) const {
         auto it = mymap.find(key);
-        if (key == mymap.end()) throw lookup_error();
+        if (it == mymap.end()) throw lookup_error();
+
+        return std::make_pair((it->second).front().key, (it->second).front().value);
     }
 
     std::pair<K const &, V const &> last(K const &key) const {
         auto it = mymap.find(key);
-        if (key == mymap.end()) throw lookup_error();
+        if (it == mymap.end()) throw lookup_error();
+
+        return std::make_pair((it->second).back().key, (it->second).back().value);
     }
 
     size_t size() const {
@@ -118,13 +157,16 @@ public:
     }
 
     void clear() {
-
+        mymap.clear();
+        queue_size = 0;
+        first_wrapping = nullptr;
+        last_wrapping = nullptr;
     }
 
     size_t count(K const &key) const {
         auto it = mymap.find(key);
 
-        return it->second.size();
+        return (it->second).size();
     }
 
     /*
@@ -152,10 +194,10 @@ private:
         V value;
         std::shared_ptr<wrapping> previous;
         std::shared_ptr<wrapping> next;
-        std::shared_ptr<std::deque> myqueue;
+        std::shared_ptr<std::deque<wrapping>> myqueue;
 
-        //TODO jakieś const referencje czy coś innego?
-        wrapping(K _key, V _value, std::shared_ptr<wrapping> _last, std::shared_ptr<std::deque> _queue) :
+        //TODO jakieś consty, referencje czy coś takiego?
+        wrapping(K _key, V _value, std::shared_ptr<wrapping> _last, std::shared_ptr<std::deque<wrapping>> _queue) :
                 key(_key), value(_value), previous(_last), next(nullptr), myqueue(_queue) {
             previous->next = this;
         }
@@ -163,7 +205,7 @@ private:
         void destroy() {
             if (next != nullptr) previous->next = next;
             if (previous != nullptr) next->previous = previous;
-            myqueue->erase(this); //czy to zadziała?
+            myqueue->erase(this); //TODO czy to zadziała?
         }
     };
 
