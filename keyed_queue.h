@@ -9,7 +9,7 @@
 
 
 class lookup_error : public std::exception {
-    const char * what () const throw () {
+    const char * what () const noexcept {
         return "lookup_error";
     }
 };
