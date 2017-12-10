@@ -213,7 +213,9 @@ public:
 Iteratory służą jedynie do przeglądania kolejki i za ich pomocą nie można
 modyfikować listy, więc zachowują się jak const_iterator z STL.
      */
-    class k_iterator {
+    class k_iterator : boost::totally_ordered<k_iterator> {
+        friend class keyed_queue;
+        
         typename map_type::iterator map_it;
 
         k_iterator(typename map_type::iterator it) : map_it(it) {}
@@ -225,10 +227,10 @@ modyfikować listy, więc zachowują się jak const_iterator z STL.
         k_iterator operator++() { ++map_it; return *this; }
         k_iterator operator++(int) { k_iterator old(*this); ++map_it; return old; }
 
-        bool operator==(const k_iterator &rhs) { return map_it == rhs.map_it; }
-        bool operator!=(const k_iterator &rhs) { return map_it != rhs.map_it; }
+        bool operator==(const k_iterator &it) const { return map_it == it.map_it; }
+        bool operator<(const k_iterator &it) const { return map_it < it.map_it; }
 
-        K operator*() { return map_it->first; }
+        const K operator*() const { return map_it->first; }
     };
 
     k_iterator k_begin() noexcept { return k_iterator(mymap.begin()); }
