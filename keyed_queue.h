@@ -213,9 +213,7 @@ public:
 Iteratory służą jedynie do przeglądania kolejki i za ich pomocą nie można
 modyfikować listy, więc zachowują się jak const_iterator z STL.
      */
-    class k_iterator 
-        : boost::equality_comparable<k_iterator>
-        , boost::incrementable<k_iterator> {
+    class k_iterator : boost::input_iteratable<k_iterator, K*> {
         friend class keyed_queue;
         
         typename map_type::iterator map_it;
