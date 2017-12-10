@@ -6,7 +6,7 @@
 #include <deque>
 #include <memory>
 #include <exception>
-
+#include <boost/operators.hpp>
 
 class lookup_error : public std::exception {
     const char * what () const noexcept {
@@ -14,18 +14,46 @@ class lookup_error : public std::exception {
     }
 };
 
-
 template <class K, class V> class keyed_queue {
+    //TODO zastanowić się, czy na pewno wszędzie powinny być shared pointery
+    class wrapping {
+    public:
+        K key;
+        V value;
+        std::shared_ptr<wrapping> previous;
+        std::shared_ptr<wrapping> next;
+        std::shared_ptr<std::deque<wrapping>> myqueue;
+
+        //TODO jakieś consty, referencje czy coś takiego?
+        wrapping(K _key, V _value, std::shared_ptr<wrapping> _last, std::shared_ptr<std::deque<wrapping>> _queue) :
+                key(_key), value(_value), previous(_last), next(nullptr), myqueue(_queue) {
+            previous->next = this;
+        }
+
+        void destroy() {
+            if (next != nullptr) previous->next = next;
+            if (previous != nullptr) next->previous = previous;
+            myqueue->erase(this); //TODO czy to zadziała?
+        }
+    };
+
+    typedef std::map<K, std::deque<wrapping>> map_type;
+
+    map_type mymap;
+    size_t queue_size;
+    std::shared_ptr<wrapping> first_wrapping;
+    std::shared_ptr<wrapping> last_wrapping;
+
 public:
     //TODO gdzieś dopisać explicit albo noexcept? + pamiętać o wyjątkach
     //TODO kopiowanie/tworzenie nowych first/last_wrappingów jest zrobione bez sensu
     keyed_queue() : queue_size(0), first_wrapping(nullptr), last_wrapping(nullptr) {}
 
     keyed_queue(keyed_queue const &other) :
-            mymap(std::move(other.mymap)),
-            queue_size(other.queue_size),
-            first_wrapping(other.first_wrapping),
-            last_wrapping(other.last_wrapping) {}
+        mymap(std::move(other.mymap)),
+        queue_size(other.queue_size),
+        first_wrapping(other.first_wrapping),
+        last_wrapping(other.last_wrapping) {}
 
     keyed_queue(keyed_queue &&other) noexcept :
         mymap(std::move(other.mymap)),
@@ -185,36 +213,27 @@ public:
 Iteratory służą jedynie do przeglądania kolejki i za ich pomocą nie można
 modyfikować listy, więc zachowują się jak const_iterator z STL.
      */
+    class k_iterator {
+        typename map_type::iterator map_it;
 
-private:
-    //TODO zastanowić się, czy na pewno wszędzie powinny być shared pointery
-    class wrapping {
+        k_iterator(typename map_type::iterator it) : map_it(it) {}
+
     public:
-        K key;
-        V value;
-        std::shared_ptr<wrapping> previous;
-        std::shared_ptr<wrapping> next;
-        std::shared_ptr<std::deque<wrapping>> myqueue;
+        k_iterator() : map_it() {}
+        k_iterator(const k_iterator &iter) : map_it(iter.map_it) {}
 
-        //TODO jakieś consty, referencje czy coś takiego?
-        wrapping(K _key, V _value, std::shared_ptr<wrapping> _last, std::shared_ptr<std::deque<wrapping>> _queue) :
-                key(_key), value(_value), previous(_last), next(nullptr), myqueue(_queue) {
-            previous->next = this;
-        }
+        k_iterator operator++() { ++map_it; return *this; }
+        k_iterator operator++(int) { k_iterator old(*this); ++map_it; return old; }
 
-        void destroy() {
-            if (next != nullptr) previous->next = next;
-            if (previous != nullptr) next->previous = previous;
-            myqueue->erase(this); //TODO czy to zadziała?
-        }
+        bool operator==(const k_iterator &rhs) { return map_it == rhs.map_it; }
+        bool operator!=(const k_iterator &rhs) { return map_it != rhs.map_it; }
+
+        K operator*() { return map_it->first; }
     };
 
-    std::map<K, std::deque<wrapping>> mymap;
+    k_iterator k_begin() noexcept { return k_iterator(mymap.begin()); }
+    k_iterator k_end() noexcept { return k_iterator(mymap.end()); }
 
-    size_t queue_size;
-
-    std::shared_ptr<wrapping> first_wrapping;
-    std::shared_ptr<wrapping> last_wrapping;
 };
 
 
