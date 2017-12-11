@@ -1,6 +1,7 @@
 #ifndef JNP5_KEYED_QUEUE_H
 #define JNP5_KEYED_QUEUE_H
 
+
 #include <iostream>
 #include <map>
 #include <deque>
@@ -8,172 +9,152 @@
 #include <exception>
 #include <boost/operators.hpp>
 
+
 class lookup_error : public std::exception {
     const char * what () const noexcept {
         return "lookup_error";
     }
 };
 
+
 template <class K, class V> class keyed_queue {
-    //TODO zastanowić się, czy na pewno wszędzie powinny być shared pointery
-    class wrapping {
-    public:
-        K key;
-        V value;
-        std::shared_ptr<wrapping> previous;
-        std::shared_ptr<wrapping> next;
-        std::shared_ptr<std::deque<wrapping>> myqueue;
 
-        //TODO jakieś consty, referencje czy coś takiego?
-        wrapping(K _key, V _value, std::shared_ptr<wrapping> _last, std::shared_ptr<std::deque<wrapping>> _queue) :
-                key(_key), value(_value), previous(_last), next(nullptr), myqueue(_queue) {
-            previous->next = this;
-        }
+    using key_value_pair = std::pair<K, V>;
+    using queue_type = std::list<key_value_pair>;
+    using iterators_list_type = std::list<queue_type::iterator>;
+    using map_type = std::map<K, iterators_list_type>;
 
-        void destroy() {
-            if (next != nullptr) previous->next = next;
-            if (previous != nullptr) next->previous = previous;
-            myqueue->erase(this); //TODO czy to zadziała?
-        }
-    };
-
-    typedef std::map<K, std::deque<wrapping>> map_type;
-
-    map_type mymap;
+    queue_type key_queue;
+    map_type iterators_map;
     size_t queue_size;
-    std::shared_ptr<wrapping> first_wrapping;
-    std::shared_ptr<wrapping> last_wrapping;
+    //TODO uwzględnić zmiany zmiane shareable w kontekście copy-on-write
+    bool shareable;
 
 public:
-    //TODO gdzieś dopisać explicit albo noexcept? + pamiętać o wyjątkach
-    //TODO kopiowanie/tworzenie nowych first/last_wrappingów jest zrobione bez sensu
-    keyed_queue() : queue_size(0), first_wrapping(nullptr), last_wrapping(nullptr) {}
 
+    keyed_queue() : queue_size(0), shareable(true) {};
+
+    //TODO czy te iteratory z mapy się dobrze przepisują?
     keyed_queue(keyed_queue const &other) :
-        mymap(std::move(other.mymap)),
+        key_queue(other.key_queue),
+        iterators_map(other.iterators_map),
         queue_size(other.queue_size),
-        first_wrapping(other.first_wrapping),
-        last_wrapping(other.last_wrapping) {}
+        shareable(other.shareable) {}
 
     keyed_queue(keyed_queue &&other) noexcept :
-        mymap(std::move(other.mymap)),
+        key_queue(std::move(other.key_queue)),
+        iterators_map(std::move(other.iterators_map)),
         queue_size(std::move(other.queue_size)),
-        first_wrapping(std::move(other.first_wrapping)),
-        last_wrapping(std::move(other.last_wrapping)) {}
+        shareable(std::move(other.shareable)) {}
 
     keyed_queue &operator=(keyed_queue other) {
-        mymap = other.mymap;
+        key_queue = other.key_queue;
+        iterators_map = other.iterators_map;
         queue_size = other.queue_size;
-        first_wrapping = other.first_wrapping;
-        last_wrapping = other.last_wrapping;
+        shareable = other.shareable;
 
         return *this;
     }
 
     void push(K const &key, V const &value) {
-        auto it = mymap.find(key);
+        key_queue.push_back(std::make_pair(key, value));
+        auto it = iterators_map.find(key);
 
-        if (it == mymap.end()) {
-            auto new_deque_ptr = std::make_shared<std::deque<wrapping>>();
-            wrapping new_wrapping(key, value, last_wrapping, new_deque_ptr);
-            (*new_deque_ptr).push_back(new_wrapping);
-            std::deque<wrapping> new_deque = *new_deque_ptr;
-            mymap.insert(std::make_pair(key, new_deque));
+        if (it == iterators_map.end()) {
+            iterators_list_type _list;
+            _list.push_back(key_queue.end()-1);
+            iterators_map.insert(std::make_pair(key, _list));
         } else {
-            auto deque_ptr = std::make_shared<std::deque<wrapping>>(it->second);
-            wrapping new_wrapping(key, value, last_wrapping, deque_ptr);
-            (it->second).push_back(new_wrapping);
+            (it->second).push_back(key_queue.end()-1);
         }
 
         queue_size++;
     }
-
+//TODO usunąć całą listę po usunięciu ostatniego jej elementu (we wszystkich popach)
+//TODO Czy pisanie auto jest ładne?
     void pop() {
         if (empty()) throw lookup_error();
 
-        auto temp_it = first_wrapping;
-        first_wrapping = first_wrapping->next;
-        temp_it->destroy(); //TODO problem z zachowaniem poprawnej kolejności w kolejce odpowiadającego kluczowi elementu *temp_it
+        auto it_queue = key_queue.begin();
+        K key = it_queue->first;
+        auto it_map = iterators_map.find(key);
+        (it_map->second).pop_front();
+        key_queue.pop_front();
 
         queue_size--;
     }
 
     void pop(K const &key) {
-        auto it = mymap.find(key);
-        if (it == mymap.end()) throw lookup_error();
+        auto it_map = iterators_map.find(key);
+        if (it == iterators_map.end()) throw lookup_error();
 
-        wrapping first_key_wrapping = (it->second).front();
-        (it->second).pop_front();
-        first_key_wrapping.destroy();
+        key_queue.erase((it_map->second).front());
+        (it_map->second).pop_front();
 
         queue_size--;
     }
 
     void move_to_back(K const &key) {
-        auto it = mymap.find(key);
-        if (it == mymap.end()) throw lookup_error();
+        auto it_map = iterators_map.find(key);
+        if (it_map == iterators_map.end()) throw lookup_error();
 
-        for (auto key_it = (it->second).begin(); key_it != (it->second).end(); ++it) {
-            // TODO uwaga - trochę powtórzenie kodu z funkcji destroy klasy wrapping
-            if (key_it->next != nullptr) key_it->previous->next = key_it->next;
-            if (key_it->previous != nullptr) key_it->next->previous = key_it->previous;
-
-            key_it->previous = last_wrapping;
-            key_it->next = nullptr;
-            last_wrapping->next = key_it; //TODO przypisanie iteratora na shared_ptr nie działa
+        for (auto it_iter = (it_map->second).begin(); it_iter != (it_map->second).end(); ++it_iter) {
+            key_value_pair moved_element(**it_iter);
+            key_queue.erase(*it_iter);
+            key_queue.push_back(moved_element);
         }
     }
 
     std::pair<K const &, V &> front() {
         if (empty()) throw lookup_error();
 
-        return std::make_pair(first_wrapping->key, first_wrapping->value);
+        return key_queue.front();
     }
 
     std::pair<K const &, V &> back() {
         if (empty()) throw lookup_error();
 
-        return std::make_pair(last_wrapping->key, last_wrapping->value);
+        return key_queue.back();
     }
 
     std::pair<K const &, V const &> front() const {
         if (empty()) throw lookup_error();
 
-        return std::make_pair(first_wrapping->key, first_wrapping->value);
+        return key_queue.front();
     }
 
     std::pair<K const &, V const &> back() const {
         if (empty()) throw lookup_error();
 
-        return std::make_pair(last_wrapping->key, last_wrapping->value);
+        return key_queue.back();
     }
 
     std::pair<K const &, V &> first(K const &key) {
-        auto it = mymap.find(key);
-        if (it == mymap.end()) throw lookup_error();
+        auto it = iterators_map.find(key);
+        if (it == iterators_map.end()) throw lookup_error();
 
-        return std::make_pair((it->second).front().key, (it->second).front().value);
+        return *(it->second.front());
     }
 
     std::pair<K const &, V &> last(K const &key) {
-        auto it = mymap.find(key);
-        if (it == mymap.end()) throw lookup_error();
+        auto it = iterators_map.find(key);
+        if (it == iterators_map.end()) throw lookup_error();
 
-        return std::make_pair((it->second).back().key, (it->second).back().value);
+        return *(it->second.back());
     }
 
     std::pair<K const &, V const &> first(K const &key) const {
-        auto it = mymap.find(key);
-        if (it == mymap.end()) throw lookup_error();
+        auto it = iterators_mapp.find(key);
+        if (it == iterators_map.end()) throw lookup_error();
 
-        return std::make_pair((it->second).front().key, (it->second).front().value);
+        return *(it->second.front());
     }
 
     std::pair<K const &, V const &> last(K const &key) const {
-        auto it = mymap.find(key);
-        if (it == mymap.end()) throw lookup_error();
+        auto it = iterators_map.find(key);
+        if (it == iterators_map.end()) throw lookup_error();
 
-        return std::make_pair((it->second).back().key, (it->second).back().value);
+        return *(it->second.back());
     }
 
     size_t size() const {
@@ -185,26 +166,28 @@ public:
     }
 
     void clear() {
-        mymap.clear();
+        key_queue.clear();
+        iterators_map.clear();
         queue_size = 0;
-        first_wrapping = nullptr;
-        last_wrapping = nullptr;
     }
 
     size_t count(K const &key) const {
-        auto it = mymap.find(key);
+        auto it = iterators_map.find(key);
 
         return (it->second).size();
     }
 
+
     class k_iterator : boost::input_iteratable<k_iterator, K*> {
+
         friend class keyed_queue;
-        
+
         typename map_type::const_iterator map_it;
 
         k_iterator(typename map_type::const_iterator it) : map_it(it) {}
 
     public:
+
         k_iterator() : map_it() {}
         k_iterator(const k_iterator &iter) : map_it(iter.map_it) {}
 
@@ -213,6 +196,7 @@ public:
         bool operator==(const k_iterator &it) const { return map_it == it.map_it; }
 
         const K& operator*() const { return map_it->first; }
+
     };
 
     k_iterator k_begin() noexcept { return k_iterator(mymap.begin()); }
