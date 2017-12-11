@@ -197,28 +197,12 @@ public:
         return (it->second).size();
     }
 
-    /*
-- Iterator k_iterator oraz metody k_begin i k_end, pozwalające przeglądać
-  zbiór kluczy w rosnącej kolejności wartości. Iteratory mogą być unieważnione
-  przez dowolną operację modyfikacji kolejki zakończoną powodzeniem
-  (w tym front, back, first i last w wersjach bez const).
-  Iterator powinien udostępniać przynajmniej następujące operacje:
-  - konstruktor bezparametrowy i kopiujący
-  - operator++ prefiksowy
-  - operator== i operator!=
-  - operator*
-  Do implementacji można użyć biblioteki Boost.Operators.
-  Wszelkie operacje w czasie O(log n). Przejrzenie całej kolejki w czasie O(n).
-
-Iteratory służą jedynie do przeglądania kolejki i za ich pomocą nie można
-modyfikować listy, więc zachowują się jak const_iterator z STL.
-     */
     class k_iterator : boost::input_iteratable<k_iterator, K*> {
         friend class keyed_queue;
         
-        typename map_type::iterator map_it;
+        typename map_type::const_iterator map_it;
 
-        k_iterator(typename map_type::iterator it) : map_it(it) {}
+        k_iterator(typename map_type::const_iterator it) : map_it(it) {}
 
     public:
         k_iterator() : map_it() {}
@@ -228,7 +212,7 @@ modyfikować listy, więc zachowują się jak const_iterator z STL.
 
         bool operator==(const k_iterator &it) const { return map_it == it.map_it; }
 
-        const K operator*() const { return map_it->first; }
+        const K& operator*() const { return map_it->first; }
     };
 
     k_iterator k_begin() noexcept { return k_iterator(mymap.begin()); }
