@@ -2,7 +2,6 @@
 #define JNP5_KEYED_QUEUE_H
 
 
-#include <iostream>
 #include <map>
 #include <list>
 #include <memory>
@@ -19,7 +18,14 @@ class lookup_error : public std::exception {
 
 template <class K, class V> class keyed_queue {
 
-    using key_value_pair = std::pair<K, V>;
+    struct key_value {
+        K key;
+        V value;
+
+        key_value(K const &_key, V const &_value) : key(_key), value(_value) {}
+    };
+
+    using key_value_pair = key_value;
     using queue_type = std::list<key_value_pair>;
     using iterators_list_type = std::list<typename queue_type::iterator>;
     using map_type = std::map<K, iterators_list_type>;
@@ -57,15 +63,15 @@ public:
     }
 
     void push(K const &key, V const &value) {
-        key_queue.push_back(std::make_pair(key, value));
+        key_queue.push_back(key_value_pair(key, value));
         auto it = iterators_map.find(key);
 
         if (it == iterators_map.end()) {
             iterators_list_type _list;
-            _list.push_back((key_queue.rend()-1).base());
+            _list.push_back((key_queue.rbegin()).base());
             iterators_map.insert(std::make_pair(key, _list));
         } else {
-            (it->second).push_back((key_queue.rend()-1).base());
+            (it->second).push_back((key_queue.rbegin()).base());
         }
 
         queue_size++;
@@ -76,7 +82,7 @@ public:
         if (empty()) throw lookup_error();
 
         auto it_queue = key_queue.begin();
-        K key = it_queue->first;
+        K key = it_queue->key;
         auto it_map = iterators_map.find(key);
         (it_map->second).pop_front();
         key_queue.pop_front();
@@ -108,53 +114,61 @@ public:
     std::pair<K const &, V &> front() {
         if (empty()) throw lookup_error();
 
-        return key_queue.front();
+        key_value_pair kv = key_queue.front();
+        return {kv.key, kv.value};
     }
 
     std::pair<K const &, V &> back() {
         if (empty()) throw lookup_error();
 
-        return key_queue.back();
+        key_value_pair kv = key_queue.back();
+        return {kv.key, kv.value};
     }
 
     std::pair<K const &, V const &> front() const {
         if (empty()) throw lookup_error();
 
-        return key_queue.front();
+        key_value_pair kv = key_queue.front();
+        return {kv.key, kv.value};
     }
 
     std::pair<K const &, V const &> back() const {
         if (empty()) throw lookup_error();
 
-        return key_queue.back();
+        key_value_pair kv = key_queue.back();
+        return {kv.key, kv.value};
     }
 
     std::pair<K const &, V &> first(K const &key) {
         auto it = iterators_map.find(key);
         if (it == iterators_map.end()) throw lookup_error();
 
-        return *(it->second.front());
+        key_value_pair kv = *(it->second.front());
+        return {kv.key, kv.value};
     }
 
     std::pair<K const &, V &> last(K const &key) {
         auto it = iterators_map.find(key);
         if (it == iterators_map.end()) throw lookup_error();
 
-        return *(it->second.back());
+        key_value_pair kv = *(it->second.back());
+        return {kv.key, kv.value};
     }
 
     std::pair<K const &, V const &> first(K const &key) const {
         auto it = iterators_map.find(key);
         if (it == iterators_map.end()) throw lookup_error();
 
-        return *(it->second.front());
+        key_value_pair kv = *(it->second.front());
+        return {kv.key, kv.value};
     }
 
     std::pair<K const &, V const &> last(K const &key) const {
         auto it = iterators_map.find(key);
         if (it == iterators_map.end()) throw lookup_error();
 
-        return *(it->second.back());
+        key_value_pair kv = *(it->second.back());
+        return {kv.key, kv.value};
     }
 
     size_t size() const {
