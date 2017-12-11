@@ -62,10 +62,10 @@ public:
 
         if (it == iterators_map.end()) {
             iterators_list_type _list;
-            _list.push_back(key_queue.end()-1);
+            _list.push_back((key_queue.rend()-1).base());
             iterators_map.insert(std::make_pair(key, _list));
         } else {
-            (it->second).push_back(key_queue.end()-1);
+            (it->second).push_back((key_queue.rend()-1).base());
         }
 
         queue_size++;
@@ -86,7 +86,7 @@ public:
 
     void pop(K const &key) {
         auto it_map = iterators_map.find(key);
-        if (it == iterators_map.end()) throw lookup_error();
+        if (it_map == iterators_map.end()) throw lookup_error();
 
         key_queue.erase((it_map->second).front());
         (it_map->second).pop_front();
@@ -144,7 +144,7 @@ public:
     }
 
     std::pair<K const &, V const &> first(K const &key) const {
-        auto it = iterators_mapp.find(key);
+        auto it = iterators_map.find(key);
         if (it == iterators_map.end()) throw lookup_error();
 
         return *(it->second.front());
