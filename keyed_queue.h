@@ -4,7 +4,7 @@
 
 #include <iostream>
 #include <map>
-#include <deque>
+#include <list>
 #include <memory>
 #include <exception>
 #include <boost/operators.hpp>
@@ -21,7 +21,7 @@ template <class K, class V> class keyed_queue {
 
     using key_value_pair = std::pair<K, V>;
     using queue_type = std::list<key_value_pair>;
-    using iterators_list_type = std::list<queue_type::iterator>;
+    using iterators_list_type = std::list<typename queue_type::iterator>;
     using map_type = std::map<K, iterators_list_type>;
 
     queue_type key_queue;
@@ -199,8 +199,8 @@ public:
 
     };
 
-    k_iterator k_begin() noexcept { return k_iterator(mymap.begin()); }
-    k_iterator k_end() noexcept { return k_iterator(mymap.end()); }
+    k_iterator k_begin() noexcept { return k_iterator(iterators_map.begin()); }
+    k_iterator k_end() noexcept { return k_iterator(iterators_map.end()); }
 
 };
 
