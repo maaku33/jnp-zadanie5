@@ -67,35 +67,37 @@ public:
         auto it = iterators_map.find(key);
 
         if (it == iterators_map.end()) {
-            iterators_list_type _list;
-            _list.push_back((key_queue.rbegin()).base());
-            iterators_map.insert(std::make_pair(key, _list));
+            iterators_list_type iter_list;
+            iter_list.push_back((key_queue.rbegin()).base());
+            iterators_map.insert(std::make_pair(key, iter_list));
         } else {
             (it->second).push_back((key_queue.rbegin()).base());
         }
 
         queue_size++;
     }
-//TODO usunąć całą listę po usunięciu ostatniego jej elementu (we wszystkich popach)
-//TODO Czy pisanie auto jest ładne?
+//TODO powtórzenie kodu? wszędzie jest podobne throwowanie i podobne są obie funkcje pop
     void pop() {
         if (empty()) throw lookup_error();
 
         auto it_queue = key_queue.begin();
         K key = it_queue->key;
         auto it_map = iterators_map.find(key);
+
         (it_map->second).pop_front();
+        if ((it_map->second).empty()) iterators_map.erase(key);
         key_queue.pop_front();
 
         queue_size--;
     }
 
     void pop(K const &key) {
-        auto it_map = iterators_map.find(key);
-        if (it_map == iterators_map.end()) throw lookup_error();
+        auto it = iterators_map.find(key);
+        if (it == iterators_map.end()) throw lookup_error();
 
-        key_queue.erase((it_map->second).front());
-        (it_map->second).pop_front();
+        key_queue.erase((it->second).front());
+        (it->second).pop_front();
+        if ((it->second).empty()) iterators_map.erase(key);
 
         queue_size--;
     }
@@ -213,8 +215,13 @@ public:
 
     };
 
-    k_iterator k_begin() noexcept { return k_iterator(iterators_map.begin()); }
-    k_iterator k_end() noexcept { return k_iterator(iterators_map.end()); }
+    k_iterator k_begin() noexcept {
+        return k_iterator(iterators_map.begin());
+    }
+
+    k_iterator k_end() noexcept {
+        return k_iterator(iterators_map.end());
+    }
 
 };
 
