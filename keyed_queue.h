@@ -30,15 +30,19 @@ template <class K, class V> class keyed_queue {
     using iterators_list_type = std::list<typename queue_type::iterator>;
     using map_type = std::map<K, iterators_list_type>;
 
-    queue_type key_queue;
-    map_type iterators_map;
+    std::shared_ptr<queue_type> key_queue;
+    std::shared_ptr<map_type> iterators_map;
     size_t queue_size;
     //TODO uwzględnić zmiany zmiane shareable w kontekście copy-on-write
     bool shareable;
 
 public:
 
-    keyed_queue() : queue_size(0), shareable(true) {};
+    keyed_queue() : 
+        key_queue(std::make_shared<queue_type>()),
+        iterators_map(std::make_shared<map_type>()),
+        queue_size(0),
+        shareable(true) {}
 
     //TODO czy te iteratory z mapy się dobrze przepisują?
     keyed_queue(keyed_queue const &other) :
@@ -60,6 +64,13 @@ public:
         shareable = other.shareable;
 
         return *this;
+    }
+
+    void write_imminent() {
+        if (key_queue.use_count() > 1) {
+            key_queue = std::make_shared<queue_type>(*key_queue);
+            iterators_map = std::make_shared<map_type>(*iterators_map);
+        }
     }
 
     void push(K const &key, V const &value) {
