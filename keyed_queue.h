@@ -137,7 +137,8 @@ public:
 
         modified = true;
 
-        return (members_ptr->key_queue).front();
+        auto temp = (members_ptr->key_queue).front();
+        return {temp.first, temp.second};
     }
 
     std::pair<K const &, V &> back() {
@@ -145,19 +146,22 @@ public:
 
         modified = true;
 
-        return (members_ptr->key_queue).back();
+        auto temp = (members_ptr->key_queue).back();
+        return {temp.first, temp.second};
     }
 
     std::pair<K const &, V const &> front() const {
         if (empty()) throw lookup_error();
 
-        return (members_ptr->key_queue).front();
+        auto temp = (members_ptr->key_queue).front();
+        return {temp.first, temp.second};
     }
 
     std::pair<K const &, V const &> back() const {
         if (empty()) throw lookup_error();
 
-        return (members_ptr->key_queue).back();
+        auto temp = (members_ptr->key_queue).back();
+        return {temp.first, temp.second};
     }
 
     // if an exception is thrown in the function find, there are no changes in the container
@@ -167,7 +171,8 @@ public:
 
         modified = true;
 
-        return *((it->second).front());
+        auto temp = *((it->second).front());
+        return {temp.first, temp.second};
     }
 
     // if an exception is thrown in the function find, there are no changes in the container
@@ -177,7 +182,8 @@ public:
 
         modified = true;
 
-        return *((it->second).back());
+        auto temp = *((it->second).back());
+        return {temp.first, temp.second};
     }
 
     // if an exception is thrown in the function find, there are no changes in the container
@@ -185,7 +191,8 @@ public:
         auto it = (members_ptr->iterators_map).find(key);
         if (it == (members_ptr->iterators_map).end()) throw lookup_error();
 
-        return *((it->second).front());
+        auto temp = *((it->second).front());
+        return {temp.first, temp.second};
     }
 
     // if an exception is thrown in the function find, there are no changes in the container
@@ -193,7 +200,8 @@ public:
         auto it = (members_ptr->iterators_map).find(key);
         if (it == (members_ptr->iterators_map).end()) throw lookup_error();
 
-        return *((it->second).back());
+        auto temp = *((it->second).back());
+        return {temp.first, temp.second};
     }
 
     // function list::size() doesn't throw
