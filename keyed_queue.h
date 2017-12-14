@@ -146,7 +146,7 @@ public:
         write_imminent();
         modified = true;
 
-        auto temp = (members_ptr->key_queue).front();
+        auto &temp = (members_ptr->key_queue).front();
         return {temp.first, temp.second};
     }
 
@@ -156,21 +156,21 @@ public:
         write_imminent();
         modified = true;
 
-        auto temp = (members_ptr->key_queue).back();
+        auto &temp = (members_ptr->key_queue).back();
         return {temp.first, temp.second};
     }
 
     std::pair<K const &, V const &> front() const {
         if (empty()) throw lookup_error();
 
-        auto temp = (members_ptr->key_queue).front();
+        auto &temp = (members_ptr->key_queue).front();
         return {temp.first, temp.second};
     }
 
     std::pair<K const &, V const &> back() const {
         if (empty()) throw lookup_error();
 
-        auto temp = (members_ptr->key_queue).back();
+        auto &temp = (members_ptr->key_queue).back();
         return {temp.first, temp.second};
     }
 
@@ -182,7 +182,7 @@ public:
         write_imminent();
         modified = true;
 
-        auto temp = *((it->second).front());
+        auto &temp = *((it->second).front());
         return {temp.first, temp.second};
     }
 
@@ -194,7 +194,7 @@ public:
         write_imminent();
         modified = true;
 
-        auto temp = *((it->second).back());
+        auto &temp = *((it->second).back());
         return {temp.first, temp.second};
     }
 
@@ -203,7 +203,7 @@ public:
         auto it = (members_ptr->iterators_map).find(key);
         if (it == (members_ptr->iterators_map).end()) throw lookup_error();
 
-        auto temp = *((it->second).front());
+        auto &temp = *((it->second).front());
         return {temp.first, temp.second};
     }
 
@@ -212,7 +212,7 @@ public:
         auto it = (members_ptr->iterators_map).find(key);
         if (it == (members_ptr->iterators_map).end()) throw lookup_error();
 
-        auto temp = *((it->second).back());
+        auto &temp = *((it->second).back());
         return {temp.first, temp.second};
     }
 
@@ -237,6 +237,7 @@ public:
     // if an exception is thrown in the function find, there are no changes in the container
     size_t count(K const &key) const {
         auto it = (members_ptr->iterators_map).find(key);
+        if (it == (members_ptr->iterators_map).end()) return 0;
 
         return (it->second).size();
     }
