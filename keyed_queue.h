@@ -74,42 +74,60 @@ public:
         return *this;
     }
 
+    members_ptr copy_members() {
+        members_ptr new_members = std::make_shared<members_struct>();
+
+        auto &queue = new_members->key_queue;
+        auto &map = new_members->iterators_map;
+
+        for (auto &p : members->key_queue) {
+            queue.push_back(std::make_pair(p.first, p.second));
+            map[p.first].push_back(--(queue.end()));
+        }
+
+        return new_members;
+    }
+
+    // copy-and-swap idiom gives a strong exception guarantee
     void check_copy_members() {
         if (members.use_count() > 1) {
-            members_ptr new_members = std::make_shared<members_struct>();
-            
-            auto &queue = new_members->key_queue;
-            auto &map = new_members->iterators_map;
-            for (auto &p : members->key_queue) {
-                queue.push_back(std::make_pair(p.first, p.second));
-                map[p.first].push_back(--(queue.end()));
-            }
-            
-            members = new_members;
+            members = copy_members();
         }
     }
 
-    // if an exception is thrown in the function find, there are no changes in the container
     void push(K const &key, V const &value) {
         check_copy_members();
 
+        // strong exception guarantee is given by the function list::push_back
         (members->key_queue).push_back(key_value_pair(key, value));
-        auto it = (members->iterators_map).find(key);
 
-        if (it == (members->iterators_map).end()) {
-            iterators_list_type iter_list;
-            iter_list.push_back(--((members->key_queue).end()));
-            (members->iterators_map).insert(std::make_pair(key, iter_list));
-        } else {
-            (it->second).push_back(--((members->key_queue).end()));
+        try {
+            auto it = (members->iterators_map).find(key);
+
+            if (it == (members->iterators_map).end()) {
+                iterators_list_type iter_list;
+                iter_list.push_back(--((members->key_queue).end()));
+                (members->iterators_map).insert(std::make_pair(key, iter_list));
+            } else {
+                (it->second).push_back(--((members->key_queue).end()));
+            }
+        } catch (...) {
+            // rollback - erasing the element from key_queue which was inserted before the try-block;
+            // changing the content of iterators_map is the last instruction in the try-block
+            // and functions map::insert (in case of inserting exactly one element) and list::push_back
+            // give strong exception guarantee;
+            // list::pop_back has no-throw guarantee
+            (members->key_queue).pop_back();
+
+            throw;
         }
     }
 
-//TODO powtórzenie kodu? wszędzie jest podobne throwowanie i podobne są obie funkcje pop
-
-    // if an exception is thrown in the function find, there are no changes in the container
     void pop() {
         if (empty()) throw lookup_error();
+
+        members_ptr old_members = members;
+        members_ptr new_members = copy_members();
 
         check_copy_members();
 
@@ -117,9 +135,22 @@ public:
         K key = it_queue->first;
         auto it_map = (members->iterators_map).find(key);
 
-        (it_map->second).pop_front();
-        if ((it_map->second).empty()) (members->iterators_map).erase(key);
-        (members->key_queue).pop_front();
+
+
+
+
+//        // list::pop_front, list::empty give no-throw guarantee
+//        auto old_front = (it_map->second).front();
+//        (it_map->second).pop_front();
+//
+//        try {
+//            // strong exception guarantee of map::erase when removing exactly one element
+//            if ((it_map->second).empty()) (members->iterators_map).erase(key);
+//        } catch (...) {
+//
+//            throw;
+//        }
+//        (members->key_queue).pop_front();
     }
 
     // if an exception is thrown in the function find, there are no changes in the container
