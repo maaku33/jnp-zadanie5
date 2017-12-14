@@ -234,11 +234,9 @@ public:
         return size() == 0;
     }
 
-    // function reset has the noexcept specifier
-    void clear() {
-        write_imminent();
-
-        members_ptr.reset();
+    // operator= throws no exceptions
+    void clear() noexcept {
+        members_ptr = std::make_shared<members>();
         modified = false;
     }
 
