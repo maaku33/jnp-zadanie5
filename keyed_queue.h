@@ -78,9 +78,11 @@ public:
         if (members.use_count() > 1) {
             members_ptr new_members = std::make_shared<members_struct>();
             
+            auto &queue = new_members->key_queue;
+            auto &map = new_members->iterators_map;
             for (auto &p : members->key_queue) {
-                new_members->key_queue.push_back(std::make_pair(p.first, p.second));
-                new_members->iterators_map[p.first].push_back(--(new_members->key_queue.end()));
+                queue.push_back(std::make_pair(p.first, p.second));
+                map[p.first].push_back(--(queue.end()));
             }
             
             members = new_members;
@@ -184,31 +186,49 @@ public:
         return {temp.first, temp.second};
     }
 
-    // if an exception is thrown in the function find, there are no changes in the container
+    // if an exception is thrown by find, copy-on-write changes are rolled back
     std::pair<K const &, V &> first(K const &key) {
         auto it = (members->iterators_map).find(key);
         if (it == (members->iterators_map).end()) throw lookup_error();
 
+        members_ptr old_members;
         check_copy_members();
-        modified = true;
 
-        auto &temp = *((it->second).front());
-        return {temp.first, temp.second};
+        try {
+            auto it = (members->iterators_map).find(key);
+
+            modified = true;
+
+            auto &temp = *((it->second).front());
+            return {temp.first, temp.second};
+        } catch (...) {
+            members = old_members;
+            throw;
+        }
     }
 
-    // if an exception is thrown in the function find, there are no changes in the container
+    // if an exception is thrown by find, copy-on-write changes are rolled back
     std::pair<K const &, V &> last(K const &key) {
         auto it = (members->iterators_map).find(key);
         if (it == (members->iterators_map).end()) throw lookup_error();
 
+        members_ptr old_members;
         check_copy_members();
-        modified = true;
 
-        auto &temp = *((it->second).back());
-        return {temp.first, temp.second};
+        try {
+            auto it = (members->iterators_map).find(key);
+
+            modified = true;
+
+            auto &temp = *((it->second).back());
+            return {temp.first, temp.second};
+        } catch (...) {
+            members = old_members;
+            throw;
+        }
     }
 
-    // if an exception is thrown in the function find, there are no changes in the container
+    // if an exception is thrown by find, there are no changes in the container
     std::pair<K const &, V const &> first(K const &key) const {
         auto it = (members->iterators_map).find(key);
         if (it == (members->iterators_map).end()) throw lookup_error();
@@ -217,7 +237,7 @@ public:
         return {temp.first, temp.second};
     }
 
-    // if an exception is thrown in the function find, there are no changes in the container
+    // if an exception is thrown by find, there are no changes in the container
     std::pair<K const &, V const &> last(K const &key) const {
         auto it = (members->iterators_map).find(key);
         if (it == (members->iterators_map).end()) throw lookup_error();
@@ -242,7 +262,7 @@ public:
         modified = false;
     }
 
-    // if an exception is thrown in the function find, there are no changes in the container
+    // if an exception is thrown by find, there are no changes in the container
     size_t count(K const &key) const {
         auto it = (members->iterators_map).find(key);
         if (it == (members->iterators_map).end()) return 0;
