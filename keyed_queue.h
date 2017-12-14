@@ -222,7 +222,7 @@ public:
         auto it = (members->iterators_map).find(key);
         if (it == (members->iterators_map).end()) throw lookup_error();
 
-        members_ptr old_members;
+        members_ptr old_members = members;
         check_copy_members();
 
         try {
@@ -243,7 +243,7 @@ public:
         auto it = (members->iterators_map).find(key);
         if (it == (members->iterators_map).end()) throw lookup_error();
 
-        members_ptr old_members;
+        members_ptr old_members = members;
         check_copy_members();
 
         try {
