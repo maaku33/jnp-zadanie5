@@ -10,214 +10,211 @@
 
 
 class lookup_error : public std::exception {
+
+public:
     const char * what () const noexcept {
         return "lookup_error";
     }
+
 };
 
 
 template <class K, class V> class keyed_queue {
 
-    struct key_value {
-        K key;
-        V value;
-
-        key_value(K const &_key, V const &_value) : key(_key), value(_value) {}
-    };
-
-    using key_value_pair = key_value;
+    using key_value_pair = std::pair<K, V>;
     using queue_type = std::list<key_value_pair>;
     using iterators_list_type = std::list<typename queue_type::iterator>;
     using map_type = std::map<K, iterators_list_type>;
 
-    std::shared_ptr<queue_type> key_queue;
-    std::shared_ptr<map_type> iterators_map;
-    size_t queue_size;
-    //TODO uwzględnić zmiany zmiane shareable w kontekście copy-on-write
-    bool shareable;
+    struct members {
+        queue_type key_queue;
+        map_type iterators_map;
+
+        // no-throw
+        members() = default;
+
+        //no-throw
+        members(members const &other) = default;
+    };
+
+    std::shared_ptr<members> members_ptr;
+    //TODO uwzględnić zmiany zmiane modified w kontekście copy-on-write
+    bool modified;
 
 public:
 
-    keyed_queue() : 
-        key_queue(std::make_shared<queue_type>()),
-        iterators_map(std::make_shared<map_type>()),
-        queue_size(0),
-        shareable(true) {}
+    keyed_queue() : /*members_ptr(std::shared_ptr<members>()),*/ modified(false) {};
 
-    //TODO czy te iteratory z mapy się dobrze przepisują?
-    keyed_queue(keyed_queue const &other) :
-        key_queue(other.key_queue),
-        iterators_map(other.iterators_map),
-        queue_size(other.queue_size),
-        shareable(other.shareable) {}
+    // doesn't throw exception because make_shared throws only if the constructor of ot members throws
+    // and the default constructor of member does not throw
+    keyed_queue(keyed_queue const &other) : modified(false) {
+        if (other.modified) {
+            members_ptr = std::make_shared<members>(*(other.members_ptr));
+        } else {
+            members_ptr = other.members_ptr;
+        }
+    }
 
-    keyed_queue(keyed_queue &&other) noexcept :
-        key_queue(std::move(other.key_queue)),
-        iterators_map(std::move(other.iterators_map)),
-        queue_size(std::move(other.queue_size)),
-        shareable(std::move(other.shareable)) {}
+    // default move constructor doesn't throw
+    keyed_queue(keyed_queue &&other) noexcept = default;
 
+    // doesn't throw exception because make_shared throws only if the constructor of ot members throws
+    // and the default constructor of member does not throw
     keyed_queue &operator=(keyed_queue other) {
-        key_queue = other.key_queue;
-        iterators_map = other.iterators_map;
-        queue_size = other.queue_size;
-        shareable = other.shareable;
+        if (other.modified) {
+            members_ptr = std::make_shared<members>(*(other.members_ptr));
+        } else {
+            members_ptr = other.members_ptr;
+        }
+
+        modified = false;
 
         return *this;
     }
 
-    void write_imminent() {
-        if (key_queue.use_count() > 1) {
-            key_queue = std::make_shared<queue_type>(*key_queue);
-            iterators_map = std::make_shared<map_type>(*iterators_map);
-        }
-    }
+//    void write_imminent() {
+//        if (members_ptr.use_count() > 1) {
+//            members_ptr = std::make_shared<members>(*members_ptr);
+//        }
+//    }
 
+    // if an exception is thrown in the function find, there are no changes in the container
     void push(K const &key, V const &value) {
-        write_imminent();
+        (members_ptr->key_queue).push_back(key_value_pair(key, value));
+        auto it = (members_ptr->iterators_map).find(key);
 
-        (*key_queue).push_back(key_value_pair(key, value));
-        auto it = (*iterators_map).find(key);
-
-        if (it == (*iterators_map).end()) {
+        if (it == (members_ptr->iterators_map).end()) {
             iterators_list_type iter_list;
-            iter_list.push_back((((*key_queue)).rbegin()).base());
-           (*iterators_map).insert(std::make_pair(key, iter_list));
+            iter_list.push_back(--((members_ptr->key_queue).end()));
+            (members_ptr->iterators_map).insert(std::make_pair(key, iter_list));
         } else {
-            (it->second).push_back(((*key_queue).rbegin()).base());
+            (it->second).push_back(--((members_ptr->key_queue).end()));
         }
-
-        queue_size++;
     }
+
 //TODO powtórzenie kodu? wszędzie jest podobne throwowanie i podobne są obie funkcje pop
+
+    // if an exception is thrown in the function find, there are no changes in the container
     void pop() {
         if (empty()) throw lookup_error();
 
-        write_imminent();
-
-        auto it_queue = (*key_queue).begin();
-        K key = it_queue->key;
-        auto it_map = (*iterators_map).find(key);
+        auto it_queue = (members_ptr->key_queue).begin();
+        K key = it_queue->first;
+        auto it_map = (members_ptr->iterators_map).find(key);
 
         (it_map->second).pop_front();
-        if ((it_map->second).empty())(*iterators_map).erase(key);
-        (*key_queue).pop_front();
-
-        queue_size--;
+        if ((it_map->second).empty()) (members_ptr->iterators_map).erase(key);
+        (members_ptr->key_queue).pop_front();
     }
 
+    // if an exception is thrown in the function find, there are no changes in the container
     void pop(K const &key) {
-        write_imminent();
+        auto it = (members_ptr->iterators_map).find(key);
+        if (it == (members_ptr->iterators_map).end()) throw lookup_error();
 
-        auto it = (*iterators_map).find(key);
-        if (it == (*iterators_map).end()) throw lookup_error();
-
-        (*key_queue).erase((it->second).front());
+        (members_ptr->key_queue).erase((it->second).front());
         (it->second).pop_front();
-        if ((it->second).empty())(*iterators_map).erase(key);
-
-        queue_size--;
+        if ((it->second).empty()) (members_ptr->iterators_map).erase(key);
     }
 
+    // functions size() and splice() don't throw exceptions
+    // if an exception is thrown in the function find, there are no changes in the container
     void move_to_back(K const &key) {
-        write_imminent();
-        
-        auto it_map = (*iterators_map).find(key);
-        if (it_map == (*iterators_map).end()) throw lookup_error();
+        auto it = (members_ptr->iterators_map).find(key);
+        if (it == (members_ptr->iterators_map).end()) throw lookup_error();
 
-        for (auto it_iter = (it_map->second).begin(); it_iter != (it_map->second).end(); ++it_iter) {
-            key_value_pair moved_element(**it_iter);
-            (*key_queue).erase(*it_iter);
-            (*key_queue).push_back(moved_element);
+        size_t number_of_elems = (it->second).size();
+
+        for (size_t i = 0; i < number_of_elems; ++i) {
+            (members_ptr->key_queue).splice(--(members_ptr->key_queue).end(), members_ptr->key_queue, (it->second).front());
+            (it->second).splice(--(it->second).end(), it->second, (it->second).begin());
         }
     }
 
+    // if the list is not empty, the function front never throws exceptions
     std::pair<K const &, V &> front() {
         if (empty()) throw lookup_error();
 
-        write_imminent();
+        modified = true;
 
-        key_value_pair kv = (*key_queue).front();
-        return {kv.key, kv.value};
+        return (members_ptr->key_queue).front();
     }
 
     std::pair<K const &, V &> back() {
         if (empty()) throw lookup_error();
 
-        write_imminent();
+        modified = true;
 
-        key_value_pair kv = (*key_queue).back();
-        return {kv.key, kv.value};
+        return (members_ptr->key_queue).back();
     }
 
     std::pair<K const &, V const &> front() const {
         if (empty()) throw lookup_error();
 
-        key_value_pair kv = (*key_queue).front();
-        return {kv.key, kv.value};
+        return (members_ptr->key_queue).front();
     }
 
     std::pair<K const &, V const &> back() const {
         if (empty()) throw lookup_error();
 
-        key_value_pair kv = (*key_queue).back();
-        return {kv.key, kv.value};
+        return (members_ptr->key_queue).back();
     }
 
+    // if an exception is thrown in the function find, there are no changes in the container
     std::pair<K const &, V &> first(K const &key) {
-        write_imminent();
+        auto it = (members_ptr->iterators_map).find(key);
+        if (it == (members_ptr->iterators_map).end()) throw lookup_error();
 
-        auto it = (*iterators_map).find(key);
-        if (it == (*iterators_map).end()) throw lookup_error();
+        modified = true;
 
-        key_value_pair kv = *(it->second.front());
-        return {kv.key, kv.value};
+        return *((it->second).front());
     }
 
+    // if an exception is thrown in the function find, there are no changes in the container
     std::pair<K const &, V &> last(K const &key) {
-        write_imminent();
-        
-        auto it = (*iterators_map).find(key);
-        if (it == (*iterators_map).end()) throw lookup_error();
+        auto it = (members_ptr->iterators_map).find(key);
+        if (it == (members_ptr->iterators_map).end()) throw lookup_error();
 
-        key_value_pair kv = *(it->second.back());
-        return {kv.key, kv.value};
+        modified = true;
+
+        return *((it->second).back());
     }
 
+    // if an exception is thrown in the function find, there are no changes in the container
     std::pair<K const &, V const &> first(K const &key) const {
-        auto it = (*iterators_map).find(key);
-        if (it == (*iterators_map).end()) throw lookup_error();
+        auto it = (members_ptr->iterators_map).find(key);
+        if (it == (members_ptr->iterators_map).end()) throw lookup_error();
 
-        key_value_pair kv = *(it->second.front());
-        return {kv.key, kv.value};
+        return *((it->second).front());
     }
 
+    // if an exception is thrown in the function find, there are no changes in the container
     std::pair<K const &, V const &> last(K const &key) const {
-        auto it = (*iterators_map).find(key);
-        if (it == (*iterators_map).end()) throw lookup_error();
+        auto it = (members_ptr->iterators_map).find(key);
+        if (it == (members_ptr->iterators_map).end()) throw lookup_error();
 
-        key_value_pair kv = *(it->second.back());
-        return {kv.key, kv.value};
+        return *((it->second).back());
     }
 
+    // function list::size() doesn't throw
     size_t size() const {
-        return queue_size;
+        return (members_ptr->key_queue).size();
     }
 
+    // function keyed_queue::size() doesn't throw
     bool empty() const {
-        return queue_size == 0;
+        return size() == 0;
     }
 
+    // function reset has the noexcept specifier
     void clear() {
-        write_imminent();
-
-        (*key_queue).clear();
-        (*iterators_map).clear();
-        queue_size = 0;
+        members_ptr.reset();
+        modified = false;
     }
 
+    // if an exception is thrown in the function find, there are no changes in the container
     size_t count(K const &key) const {
-        auto it = (*iterators_map).find(key);
+        auto it = (members_ptr->iterators_map).find(key);
 
         return (it->second).size();
     }
@@ -225,31 +222,41 @@ public:
 
     class k_iterator : boost::input_iteratable<k_iterator, K*> {
 
+        using map_iterator = typename map_type::const_iterator;
+
         friend class keyed_queue;
+        map_iterator map_it;
 
-        typename map_type::const_iterator map_it;
-
-        k_iterator(typename map_type::const_iterator it) : map_it(it) {}
+        explicit k_iterator(const map_iterator& it) : map_it(it) {}
 
     public:
 
-        k_iterator() : map_it() {}
+        k_iterator() = default;
+
         k_iterator(const k_iterator &iter) : map_it(iter.map_it) {}
 
-        k_iterator operator++() { ++map_it; return *this; }
+        k_iterator operator++() {
+            ++map_it;
 
-        bool operator==(const k_iterator &it) const { return map_it == it.map_it; }
+            return *this;
+        }
 
-        const K& operator*() const { return map_it->first; }
+        bool operator==(const k_iterator &it) const {
+            return map_it == it.map_it;
+        }
+
+        const K& operator*() const {
+            return map_it->first;
+        }
 
     };
 
     k_iterator k_begin() noexcept {
-        return k_iterator((*iterators_map).begin());
+        return k_iterator((members_ptr->iterators_map).begin());
     }
 
     k_iterator k_end() noexcept {
-        return k_iterator((*iterators_map).end());
+        return k_iterator((members_ptr->iterators_map).end());
     }
 
 };
