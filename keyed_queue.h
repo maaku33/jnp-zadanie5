@@ -236,8 +236,8 @@ public:
         return size() == 0;
     }
 
-    // operator= throws no exceptions
-    void clear() noexcept {
+    // if make_shared throws an exception, there are no changes in the container
+    void clear() {
         members = std::make_shared<members_struct>();
         modified = false;
     }
