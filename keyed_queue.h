@@ -30,25 +30,28 @@ template <class K, class V> class keyed_queue {
         queue_type key_queue;
         map_type iterators_map;
 
-        // no-throw
         members_struct() = default;
 
-        //no-throw
-        members_struct(members_struct const &other) = default;
+        members_struct(members_struct const &other) {
+            for (auto &p : other.key_queue) {
+                key_queue.push_back(std::make_pair(p.first, p.second));
+                iterators_map[p.first].push_back(--(key_queue.end()));
+            }
+        };
     };
 
     using members_ptr = std::shared_ptr<members_struct>;
 
     members_ptr members;
-    //TODO uwzględnić zmiany zmiane modified w kontekście copy-on-write
     bool modified;
 
 public:
 
     keyed_queue() : members(std::make_shared<members_struct>()), modified(false) {};
 
-    // doesn't throw exception because make_shared throws only if the constructor of ot members throws
-    // and the default constructor of member does not throw
+    // doesn't throw exception because make_shared throws only if the
+    // constructor of the members throws and the default constructor of members
+    // does not throw
     keyed_queue(keyed_queue const &other) : modified(false) {
         if (other.modified) {
             members = std::make_shared<members_struct>(*(other.members));
@@ -60,8 +63,9 @@ public:
     // default move constructor doesn't throw
     keyed_queue(keyed_queue &&other) noexcept = default;
 
-    // doesn't throw exception because make_shared throws only if the constructor of ot members throws
-    // and the default constructor of member does not throw
+    // doesn't throw exception because make_shared throws only if the
+    // constructor of the members throws and the default constructor of member
+    // does not throw
     keyed_queue &operator=(keyed_queue other) {
         if (other.modified) {
             members = std::make_shared<members_struct>(*(other.members));
@@ -76,20 +80,11 @@ public:
 
     void check_copy_members() {
         if (members.use_count() > 1) {
-            members_ptr new_members = std::make_shared<members_struct>();
-            
-            auto &queue = new_members->key_queue;
-            auto &map = new_members->iterators_map;
-            for (auto &p : members->key_queue) {
-                queue.push_back(std::make_pair(p.first, p.second));
-                map[p.first].push_back(--(queue.end()));
-            }
-            
-            members = new_members;
+            members = std::make_shared<members_struct>(*members);
         }
     }
 
-    // if an exception is thrown in the function find, there are no changes in the container
+    // if an exception is thrown by find, there are no changes in the container
     void push(K const &key, V const &value) {
         check_copy_members();
 
@@ -105,9 +100,7 @@ public:
         }
     }
 
-//TODO powtórzenie kodu? wszędzie jest podobne throwowanie i podobne są obie funkcje pop
-
-    // if an exception is thrown in the function find, there are no changes in the container
+    // if an exception is thrown by find, there are no changes in the container
     void pop() {
         if (empty()) throw lookup_error();
 
@@ -122,7 +115,7 @@ public:
         (members->key_queue).pop_front();
     }
 
-    // if an exception is thrown in the function find, there are no changes in the container
+    // if an exception is thrown by find, there are no changes in the container
     void pop(K const &key) {
         check_copy_members();
 
@@ -135,7 +128,7 @@ public:
     }
 
     // functions size() and splice() don't throw exceptions
-    // if an exception is thrown in the function find, there are no changes in the container
+    // if an exception is thrown by find, there are no changes in the container
     void move_to_back(K const &key) {
         check_copy_members();
 
@@ -191,7 +184,7 @@ public:
         auto it = (members->iterators_map).find(key);
         if (it == (members->iterators_map).end()) throw lookup_error();
 
-        members_ptr old_members;
+        members_ptr old_members = members;
         check_copy_members();
 
         try {
@@ -212,7 +205,7 @@ public:
         auto it = (members->iterators_map).find(key);
         if (it == (members->iterators_map).end()) throw lookup_error();
 
-        members_ptr old_members;
+        members_ptr old_members = members;
         check_copy_members();
 
         try {
