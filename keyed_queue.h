@@ -133,9 +133,10 @@ public:
 
         size_t number_of_elems = (it->second).size();
 
+        auto &queue = members_ptr->key_queue;
         for (size_t i = 0; i < number_of_elems; ++i) {
-            (members_ptr->key_queue).splice(--(members_ptr->key_queue).end(), members_ptr->key_queue, (it->second).front());
-            (it->second).splice(--(it->second).end(), it->second, (it->second).begin());
+            queue.splice(queue.end(), queue, (it->second).front());
+            (it->second).splice((it->second).end(), it->second, (it->second).begin());
         }
     }
 
