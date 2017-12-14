@@ -225,12 +225,12 @@ public:
     }
 
     // function list::size() doesn't throw
-    size_t size() const {
+    size_t size() const noexcept {
         return (members_ptr->key_queue).size();
     }
 
     // function keyed_queue::size() doesn't throw
-    bool empty() const {
+    bool empty() const noexcept {
         return size() == 0;
     }
 
