@@ -43,7 +43,7 @@ template <class K, class V> class keyed_queue {
 
 public:
 
-    keyed_queue() : /*members_ptr(std::shared_ptr<members>()),*/ modified(false) {};
+    keyed_queue() : members_ptr(std::make_shared<members>()), modified(false) {};
 
     // doesn't throw exception because make_shared throws only if the constructor of ot members throws
     // and the default constructor of member does not throw
@@ -72,14 +72,16 @@ public:
         return *this;
     }
 
-//    void write_imminent() {
-//        if (members_ptr.use_count() > 1) {
-//            members_ptr = std::make_shared<members>(*members_ptr);
-//        }
-//    }
+    void write_imminent() {
+        if (members_ptr.use_count() > 1) {
+            members_ptr = std::make_shared<members>(*members_ptr);
+        }
+    }
 
     // if an exception is thrown in the function find, there are no changes in the container
     void push(K const &key, V const &value) {
+        write_imminent();
+
         (members_ptr->key_queue).push_back(key_value_pair(key, value));
         auto it = (members_ptr->iterators_map).find(key);
 
@@ -98,6 +100,8 @@ public:
     void pop() {
         if (empty()) throw lookup_error();
 
+        write_imminent();
+
         auto it_queue = (members_ptr->key_queue).begin();
         K key = it_queue->first;
         auto it_map = (members_ptr->iterators_map).find(key);
@@ -109,6 +113,8 @@ public:
 
     // if an exception is thrown in the function find, there are no changes in the container
     void pop(K const &key) {
+        write_imminent();
+
         auto it = (members_ptr->iterators_map).find(key);
         if (it == (members_ptr->iterators_map).end()) throw lookup_error();
 
@@ -120,6 +126,8 @@ public:
     // functions size() and splice() don't throw exceptions
     // if an exception is thrown in the function find, there are no changes in the container
     void move_to_back(K const &key) {
+        write_imminent();
+
         auto it = (members_ptr->iterators_map).find(key);
         if (it == (members_ptr->iterators_map).end()) throw lookup_error();
 
@@ -135,6 +143,7 @@ public:
     std::pair<K const &, V &> front() {
         if (empty()) throw lookup_error();
 
+        write_imminent();
         modified = true;
 
         auto temp = (members_ptr->key_queue).front();
@@ -144,6 +153,7 @@ public:
     std::pair<K const &, V &> back() {
         if (empty()) throw lookup_error();
 
+        write_imminent();
         modified = true;
 
         auto temp = (members_ptr->key_queue).back();
@@ -169,6 +179,7 @@ public:
         auto it = (members_ptr->iterators_map).find(key);
         if (it == (members_ptr->iterators_map).end()) throw lookup_error();
 
+        write_imminent();
         modified = true;
 
         auto temp = *((it->second).front());
@@ -180,6 +191,7 @@ public:
         auto it = (members_ptr->iterators_map).find(key);
         if (it == (members_ptr->iterators_map).end()) throw lookup_error();
 
+        write_imminent();
         modified = true;
 
         auto temp = *((it->second).back());
@@ -216,6 +228,8 @@ public:
 
     // function reset has the noexcept specifier
     void clear() {
+        write_imminent();
+
         members_ptr.reset();
         modified = false;
     }
