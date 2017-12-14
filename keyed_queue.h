@@ -74,7 +74,14 @@ public:
 
     void write_imminent() {
         if (members_ptr.use_count() > 1) {
-            members_ptr = std::make_shared<members>(*members_ptr);
+            std::shared_ptr<members> new_members = std::make_shared<members>();
+            
+            for (auto &p : members_ptr->key_queue) {
+                new_members->key_queue.push_back(std::make_pair(p.first, p.second));
+                new_members->iterators_map[p.first].push_back(--(new_members->key_queue.end()));
+            }
+            
+            members_ptr = new_members;
         }
     }
 
