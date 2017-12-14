@@ -47,7 +47,9 @@ template <class K, class V> class keyed_queue {
 
 public:
 
-    keyed_queue() : members(std::make_shared<members_struct>()), modified(false) {};
+    keyed_queue() : 
+        members(std::make_shared<members_struct>()),
+        modified(false) {};
 
     // doesn't throw exception because make_shared throws only if the
     // constructor of the members throws and the default constructor of members
@@ -138,9 +140,10 @@ public:
         size_t number_of_elems = (it->second).size();
 
         auto &queue = members->key_queue;
+        auto &map_queue = it->second;
         for (size_t i = 0; i < number_of_elems; ++i) {
             queue.splice(queue.end(), queue, (it->second).front());
-            (it->second).splice((it->second).end(), it->second, (it->second).begin());
+            map_queue.splice(map_queue.end(), map_queue, map_queue.begin());
         }
     }
 
